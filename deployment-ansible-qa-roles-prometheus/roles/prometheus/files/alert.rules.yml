@@ -1,0 +1,56 @@
+groups:
+- name: alert.rules
+  rules:
+  - alert: ExporterDown
+    expr: up == 0
+    for: 1m
+    labels:
+      severity: "critical"
+    annotations:
+      summary: "Exporter at {{ $labels.instance }} is down"
+      description: "{{ $labels.instance }} of job {{ $labels.job }} has been down for more than 1 minutes."
+
+  - alert: High_RAM_usage
+    expr: ((node_memory_MemTotal_bytes - (node_memory_MemFree_bytes + node_memory_Buffers_bytes + node_memory_Cached_bytes) ) / (node_memory_MemTotal_bytes) * 100) > 80
+    for: 30s
+    labels:
+      severity: critical
+    annotations:
+      summary: "High RAM usage on instance {{ $labels.instance }}"
+      description: "RAM usage is higher than 80% for over 1 min.\n VALUE = {{ $value }}"
+
+  - alert: Running low on disk
+    expr: node_filesystem_free_bytes{device="rootfs"} / node_filesystem_size_bytes{device="rootfs"} * 100 < 10
+    for: 5m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Free disk space is less than 10% in '/'"
+      description: "Disk space running low on '/' of {{ $labels.instance }}. Free up some space\n VALUE = {{ $value }}"
+
+  - alert: High CPU usage
+    expr: 100 - (avg by(instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+    for: 5m
+    labels:
+      severity: critical
+    annotations:
+      summary: "High CPU load on {{ $labels.instance }}"
+      description: "CPU load is higher than 80%\n VALUE = {{ $value }}"
+
+  - alert: High CPU load
+    expr: (node_load5 / count without(cpu, mode) (node_cpu_seconds_total{mode="system"})) > 3
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: "High CPU load on {{ $labels.instance }}"
+      description: "CPU load is higher than 3\n VALUE = {{ $value }}"
+
+  - alert: Kafka message queue is high
+    expr: sum(delta(kafka_topic_partition_current_offset{topic="com.engati.rpa.new.event"}[5m])/5) by (topic) > 2
+    for: 2m
+    labels:
+      severtity: warning
+    annotations:
+      summary: "High kafka message queue on {{ $labels.instance }}"
+      description: "Kafka message queue is higher than 2\n VALUE = {{ $value }}"

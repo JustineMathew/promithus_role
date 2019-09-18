@@ -1,0 +1,90 @@
+---
+- name: Checking the prometheus bin exists
+  stat: path=/usr/local/bin/prometheus
+  register: bin
+
+- name: Creating prometheus group.
+  become: true
+  group:
+    name: prometheus
+
+- name: Creating prometheus user.
+  become: true
+  user:
+    name: prometheus
+    system: yes
+    shell: "/sbin/nologin"
+    comment: "prometheus nologin User"
+    createhome: "no"
+
+- name: Downloading prometheus
+  unarchive:
+    src: "https://github.com/prometheus/prometheus/releases/download/v{{ version }}/prometheus-{{ version }}.linux-amd64.tar.gz"
+    dest: /tmp/
+    remote_src: yes
+  when: not bin.stat.exists
+
+- name: Copying to bin
+  become: true
+  copy: src={{ item.src }} dest={{ item.dest }} owner="prometheus" group="prometheus" remote_src={{ item.rsrc }} mode=0755
+  with_items:
+    - { src: '/tmp/prometheus-{{ version }}.linux-amd64/prometheus', dest: '/usr/local/bin/prometheus', rsrc: 'yes' }
+    - { src: '/tmp/prometheus-{{ version }}.linux-amd64/promtool', dest: '/usr/local/bin/promtool', rsrc: 'yes' }
+  when: not bin.stat.exists
+
+- name: Create storage dir
+  become: true
+  file:
+    path: '/var/lib/prometheus'
+    state: directory
+    owner: "prometheus"
+    group: "prometheus"
+
+- name: Copy prometheus.yml file
+  become: true
+  template:
+    src: prometheus.yml
+    dest: /etc/prometheus/
+    owner: "prometheus"
+    group: "prometheus"
+  register: config
+
+- name: Create rule dir
+  become: true
+  file:
+    path: '/etc/prometheus/rules/'
+    state: directory
+    owner: "prometheus"
+    group: "prometheus"
+
+- name: Copying conf file
+  become: true
+  copy:
+    src={{ item.src }}
+    dest={{ item.dest }}
+    owner="prometheus"
+    group="prometheus"
+  with_items:
+    - { src: 'alert.rules.yml', dest: '/etc/prometheus/rules/alert.rules.yml'}
+    - { src: 'prometheus.service', dest: '/etc/systemd/system/prometheus.service'}
+  register: rule
+
+- name: Delete prometheus tmp folder
+  file:
+    path: '/tmp/prometheus-{{ version }}.linux-amd64'
+    state: absent
+
+- name: Starting prometheus service
+  become: true
+  systemd:
+    state: started
+    daemon_reload: yes
+    name: prometheus.service
+    enabled: yes
+
+- name: Reload prometheus service
+  become: true
+  systemd:
+   state: reloaded
+   name: prometheus.service
+  when: config.changed or rule.changed
